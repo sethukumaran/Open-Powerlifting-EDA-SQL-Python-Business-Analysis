@@ -1,14 +1,5 @@
 """
 Powerlifting EDA + SQL/Python Business Analysis
-Run from project root:
-    python src/analyze_powerlifting.py
-
-The script:
-1) Loads data/meets.csv and data/openpowerlifting.csv
-2) Performs Python EDA and data-quality checks
-3) Loads both tables into SQLite
-4) Executes SQL business queries from sql/analysis_queries.sql
-5) Writes outputs/ and visualizations/
 """
 from pathlib import Path
 import sqlite3
@@ -77,3 +68,329 @@ for name, q in sql.items():
     pd.read_sql_query(q, con).to_csv(OUT / f"{name}.csv", index=False)
 con.close()
 print("SQL outputs written to outputs/.")
+
+## Number of meets by year
+annual = (
+    lifting
+    .groupby("Year")
+    .agg(
+        Meets=("MeetID", "nunique"),
+        LifterEntries=("Name", "count"),
+        UniqueLifters=("Name", "nunique")
+    )
+    .reset_index()
+)
+plt.figure(figsize=(12, 6))
+plt.plot(
+    annual["Year"],
+    annual["Meets"],
+    marker="o",
+    linewidth=2
+)
+plt.title("Powerlifting Meets by Year")
+plt.xlabel("Year")
+plt.ylabel("Number of Meets")
+plt.grid(alpha=0.3)
+
+plt.tight_layout()
+plt.savefig(
+    "visualizations/01_meets_by_year.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Unique lifters by year
+plt.figure(figsize=(12, 6))
+
+plt.plot(
+    annual["Year"],
+    annual["UniqueLifters"],
+    marker="o",
+    linewidth=2
+)
+plt.title("Unique Powerlifters by Year")
+plt.xlabel("Year")
+plt.ylabel("Unique Lifters")
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(
+    "visualizations/02_unique_lifters_by_year.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Equipment participation mix
+
+equipment = (
+    lifting["Equipment"]
+    .value_counts()
+    .reset_index()
+)
+equipment.columns = ["Equipment", "Entries"]
+plt.figure(figsize=(10, 6))
+plt.bar(
+    equipment["Equipment"],
+    equipment["Entries"]
+)
+plt.title("Lifter Entries by Equipment")
+plt.xlabel("Equipment")
+plt.ylabel("Number of Entries")
+plt.xticks(rotation=20)
+plt.tight_layout()
+plt.savefig(
+    "visualizations/03_equipment_mix.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Sex participation
+sex = (
+    lifting["Sex"]
+    .value_counts()
+    .reset_index()
+)
+sex.columns = ["Sex", "Entries"]
+plt.figure(figsize=(8, 6))
+plt.bar(
+    sex["Sex"],
+    sex["Entries"]
+)
+plt.title("Lifter Entries by Sex")
+plt.xlabel("Sex")
+plt.ylabel("Number of Entries")
+plt.tight_layout()
+plt.savefig(
+    "visualizations/04_sex_mix.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Top 10 federations
+federation = (
+    lifting
+    .groupby("Federation")
+    .agg(
+        Entries=("Name", "count"),
+        UniqueLifters=("Name", "nunique"),
+        Meets=("MeetID", "nunique")
+    )
+    .reset_index()
+    .sort_values("Entries", ascending=False)
+)
+top_federations = federation.head(10).sort_values("Entries")
+plt.figure(figsize=(10, 7))
+plt.barh(
+    top_federations["Federation"],
+    top_federations["Entries"]
+)
+plt.title("Top 10 Federations by Lifter Entries")
+plt.xlabel("Lifter Entries")
+plt.ylabel("Federation")
+plt.tight_layout()
+plt.savefig(
+    "visualizations/05_top_federations.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Top 10 countries by number of meets
+
+country = (
+    lifting
+    .groupby("MeetCountry")
+    .agg(
+        Meets=("MeetID", "nunique"),
+        Entries=("Name", "count"),
+        UniqueLifters=("Name", "nunique")
+    )
+    .reset_index()
+    .sort_values("Meets", ascending=False)
+)
+top_countries = country.head(10).sort_values("Meets")
+plt.figure(figsize=(10, 7))
+plt.barh(
+    top_countries["MeetCountry"],
+    top_countries["Meets"]
+)
+plt.title("Top 10 Countries by Number of Meets")
+plt.xlabel("Number of Meets")
+plt.ylabel("Country")
+plt.tight_layout()
+plt.savefig(
+    "visualizations/06_top_countries.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Bodyweight vs total — performance relationship
+
+performance = lifting[
+    (lifting["BodyweightKg"] > 0) &
+    (lifting["TotalKg"] > 0)
+].copy()
+plt.figure(figsize=(10, 7))
+plt.scatter(
+    performance["BodyweightKg"],
+    performance["TotalKg"],
+    alpha=0.15,
+    s=12
+)
+plt.title("Bodyweight vs Powerlifting Total")
+plt.xlabel("Bodyweight (kg)")
+plt.ylabel("Total (kg)")
+plt.grid(alpha=0.2)
+plt.tight_layout()
+plt.savefig(
+    "visualizations/07_bodyweight_vs_total.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Median total by equipment
+complete_lifters = lifting[
+    (lifting["TotalKg"] > 0) &
+    (lifting["BestSquatKg"] > 0) &
+    (lifting["BestBenchKg"] > 0) &
+    (lifting["BestDeadliftKg"] > 0)
+].copy()
+equipment_performance = (
+    complete_lifters
+    .groupby("Equipment")["TotalKg"]
+    .median()
+    .sort_values(ascending=False)
+)
+plt.figure(figsize=(10, 6))
+plt.bar(
+    equipment_performance.index,
+    equipment_performance.values
+)
+plt.title("Median Powerlifting Total by Equipment")
+plt.xlabel("Equipment")
+plt.ylabel("Median Total (kg)")
+plt.xticks(rotation=20)
+plt.tight_layout()
+plt.savefig(
+    "visualizations/08_median_total_by_equipment.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Additional visualization: total distribution
+
+total_data = lifting[
+    lifting["TotalKg"] > 0
+]["TotalKg"].dropna()
+plt.figure(figsize=(10, 6))
+plt.hist(
+    total_data,
+    bins=50,
+    edgecolor="black"
+)
+plt.title("Distribution of Powerlifting Totals")
+plt.xlabel("Total (kg)")
+plt.ylabel("Number of Lifter Entries")
+plt.tight_layout()
+plt.savefig(
+    "visualizations/10_total_distribution.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Age distribution
+
+age_data = lifting[
+    (lifting["Age"] > 0) &
+    (lifting["Age"] < 100)
+]["Age"].dropna()
+plt.figure(figsize=(10, 6))
+plt.hist(
+    age_data,
+    bins=30,
+    edgecolor="black"
+)
+plt.title("Age Distribution of Powerlifters")
+plt.xlabel("Age")
+plt.ylabel("Number of Lifter Entries")
+plt.tight_layout()
+plt.savefig(
+    "visualizations/11_age_distribution.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Squat, bench and deadlift comparison
+lift_columns = [
+    "BestSquatKg",
+    "BestBenchKg",
+    "BestDeadliftKg"
+]
+median_lifts = (
+    complete_lifters[lift_columns]
+    .median()
+)
+median_lifts.index = [
+    "Squat",
+    "Bench",
+    "Deadlift"
+]
+plt.figure(figsize=(9, 6))
+plt.bar(
+    median_lifts.index,
+    median_lifts.values
+)
+plt.title("Median Best Lift")
+plt.xlabel("Lift")
+plt.ylabel("Weight (kg)")
+plt.tight_layout()
+plt.savefig(
+    "visualizations/12_median_lifts.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
+
+## Annual average total
+annual_performance = (
+    complete_lifters
+    .groupby("Year")
+    .agg(
+        AverageTotal=("TotalKg", "mean"),
+        MedianTotal=("TotalKg", "median")
+    )
+    .reset_index()
+)
+plt.figure(figsize=(12, 6))
+plt.plot(
+    annual_performance["Year"],
+    annual_performance["AverageTotal"],
+    marker="o",
+    label="Average Total"
+)
+plt.plot(
+    annual_performance["Year"],
+    annual_performance["MedianTotal"],
+    marker="o",
+    label="Median Total"
+)
+plt.title("Powerlifting Performance Trend")
+plt.xlabel("Year")
+plt.ylabel("Total (kg)")
+plt.legend()
+plt.grid(alpha=0.3)
+plt.tight_layout()
+plt.savefig(
+    "visualizations/13_performance_trend.png",
+    dpi=300,
+    bbox_inches="tight"
+)
+plt.show()
